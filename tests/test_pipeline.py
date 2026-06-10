@@ -151,3 +151,15 @@ def test_jpgs_from_decrypted_writes_folder(multi_page_pdf, tmp_path):
     folder = jpgs_from_decrypted(multi_page_pdf.read_bytes(), multi_page_pdf, tmp_path)
     assert folder.is_dir()
     assert len(list(folder.glob("*.jpg"))) == 3
+
+
+def test_jpgs_from_decrypted_cancel_creates_no_folder(multi_page_pdf, tmp_path):
+    # The output folder is created only after every page has rendered, so a
+    # cancel mid-render must leave the output dir with no folder at all.
+    cancel = threading.Event()
+    cancel.set()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    with pytest.raises(Cancelled):
+        jpgs_from_decrypted(multi_page_pdf.read_bytes(), multi_page_pdf, out_dir, cancel=cancel)
+    assert list(out_dir.iterdir()) == []
