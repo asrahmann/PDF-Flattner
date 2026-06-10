@@ -38,7 +38,17 @@ jobs:
           TAG: ${{ github.ref_name }}
         shell: bash
         run: |
+          # GitHub's auth API has been returning intermittent 401s; retry a few times.
           gh release create "$TAG" --title "PDF Flatten & Decrypt $TAG" \
             --notes "Portable Windows build — download the .exe below. No install needed (double-click to run; Windows SmartScreen: More info -> Run anyway). Output saves to your Desktop as flattened-<name>.pdf." \
             || echo "Release $TAG already exists; updating asset."
-          gh release upload "$TAG" dist/PDF-Flatten-Decrypt.exe --clobber
+          for attempt in 1 2 3 4 5; do
+            if gh release upload "$TAG" dist/PDF-Flatten-Decrypt.exe --clobber; then
+              echo "Asset uploaded on attempt $attempt."
+              exit 0
+            fi
+            echo "Upload attempt $attempt failed (likely a transient 401); retrying in 15s…"
+            sleep 15
+          done
+          echo "::error::Could not upload release asset after 5 attempts."
+          exit 1
