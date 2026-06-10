@@ -1,0 +1,5 @@
+pikepdf>=9.0
+pypdfium2>=4.30
+img2pdf>=0.5
+Pillow>=10.0
+tkinterdnd2>=0.4

@@ -1,0 +1,100 @@
+"""A minimal Tkinter GUI: drop PDFs, prompt for password if needed, save to Desktop."""
+
+import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog, simpledialog
+
+from tkinterdnd2 import DND_FILES, TkinterDnD
+
+from .decrypt import PasswordRequired
+from .desktop import desktop_dir
+from .pipeline import process_pdf
+
+
+class App:
+    def __init__(self) -> None:
+        self.root = TkinterDnD.Tk()
+        self.root.title("PDF Flatten & Decrypt")
+        self.root.geometry("460x300")
+        self.root.minsize(420, 260)
+
+        tk.Label(
+            self.root,
+            text="Drop PDF files here\nto decrypt & flatten for faxing",
+            font=("Helvetica", 15),
+            justify="center",
+        ).pack(expand=True, fill="both", padx=20, pady=(20, 5))
+
+        tk.Button(self.root, text="Choose file(s)…", command=self._choose).pack(pady=5)
+
+        self.status = tk.Label(
+            self.root,
+            text="Saved files go to your Desktop.",
+            fg="#444",
+            wraplength=420,
+            justify="center",
+        )
+        self.status.pack(pady=10)
+
+        self.root.drop_target_register(DND_FILES)
+        self.root.dnd_bind("<<Drop>>", self._on_drop)
+
+    def _choose(self) -> None:
+        paths = filedialog.askopenfilenames(
+            title="Choose PDF(s)", filetypes=[("PDF files", "*.pdf")]
+        )
+        self._handle(list(paths))
+
+    def _on_drop(self, event) -> None:
+        # tkinterdnd2 returns a brace/space-delimited list; splitlist handles it.
+        self._handle(list(self.root.tk.splitlist(event.data)))
+
+    def _handle(self, paths) -> None:
+        pdfs = [p for p in paths if str(p).lower().endswith(".pdf")]
+        if not pdfs:
+            self._set("Please drop PDF files (.pdf).", "#b00")
+            return
+        done, failed = [], []
+        for p in pdfs:
+            try:
+                out = self._process_one(Path(p))
+                if out is None:
+                    failed.append(f"{Path(p).name} (skipped)")
+                else:
+                    done.append(out.name)
+            except Exception as exc:  # noqa: BLE001 - surface any error to the user
+                failed.append(f"{Path(p).name}: {exc}")
+        msg = ""
+        if done:
+            msg += "✓ Saved to Desktop:\n" + "\n".join(done)
+        if failed:
+            msg += ("\n\n" if done else "") + "✗ Problems:\n" + "\n".join(failed)
+        self._set(msg, "#070" if not failed else "#b00")
+
+    def _process_one(self, path: Path):
+        """Process one file, prompting for a password up to 3 times if needed."""
+        password = ""
+        for _ in range(3):
+            try:
+                return process_pdf(path, output_dir=desktop_dir(), password=password)
+            except PasswordRequired:
+                password = simpledialog.askstring(
+                    "Password required",
+                    f"Enter the password to open:\n{path.name}",
+                    show="*",
+                    parent=self.root,
+                )
+                if password is None:  # user cancelled
+                    return None
+        raise PasswordRequired("incorrect password")
+
+    def _set(self, text: str, color: str = "#444") -> None:
+        self.status.config(text=text, fg=color)
+        self.root.update_idletasks()
+
+    def run(self) -> None:
+        self.root.mainloop()
+
+
+def main() -> None:
+    App().run()
