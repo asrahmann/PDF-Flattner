@@ -10,6 +10,8 @@ import io
 import pypdfium2 as pdfium
 from PIL import Image
 
+from .render import clamped_scale
+
 JPG_DPI = 200
 # Keep each image comfortably under common 30 MB fax limits.
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
@@ -28,8 +30,12 @@ def _page_to_jpg(page, dpi: int, max_bytes: int | None) -> bytes:
     candidate_dpis = (dpi, *(d for d in _DPI_LADDER if d < dpi))
     data = b""
     for candidate_dpi in candidate_dpis:
-        scale = candidate_dpi / 72.0
-        pil_image = page.render(scale=scale, grayscale=True).to_pil().convert("L")
+        # Cap the render to the pixel budget so a hostile page size can't
+        # force a huge allocation; the effective DPI drops instead.
+        scale = clamped_scale(*page.get_size(), candidate_dpi)
+        bitmap = page.render(scale=scale, grayscale=True)
+        pil_image = bitmap.to_pil().convert("L")
+        bitmap.close()
         for quality in _QUALITY_LADDER:
             data = _encode(pil_image, quality)
             if max_bytes is None or len(data) <= max_bytes:

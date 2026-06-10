@@ -1,5 +1,7 @@
-pikepdf>=9.0
-pypdfium2>=4.30
-img2pdf>=0.5
-Pillow>=10.0
-tkinterdnd2>=0.4
+# Exact pins: the release .exe bundles whatever installs here, so versions
+# must be deliberate. Bump by editing these (then re-run tests + pip-audit).
+pikepdf==10.8.0
+pypdfium2==5.9.0
+img2pdf==0.6.3
+Pillow==12.2.0
+tkinterdnd2==0.5.0

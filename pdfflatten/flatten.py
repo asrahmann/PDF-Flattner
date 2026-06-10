@@ -14,6 +14,8 @@ import pikepdf
 import pypdfium2 as pdfium
 from PIL import Image
 
+from .render import clamped_scale
+
 FAX_DPI = 200
 # Common fax APIs cap uploads around 30 MB; stay comfortably under that.
 DEFAULT_MAX_BYTES = 25 * 1024 * 1024
@@ -24,17 +26,21 @@ _DPI_LADDER = (200, 150, 120, 100)
 def _render_pages(pdf_bytes: bytes, dpi: int) -> list[bytes]:
     """Render every page to a 1-bit PNG at ``dpi``, returning the PNG bytes."""
     doc = pdfium.PdfDocument(pdf_bytes)
-    scale = dpi / 72.0
     images: list[bytes] = []
     try:
         for page in doc:
+            # Cap the render to the pixel budget so a hostile page size can't
+            # force a huge allocation; the effective DPI drops instead.
+            scale = clamped_scale(*page.get_size(), dpi)
+            effective_dpi = max(1, round(scale * 72))
             bitmap = page.render(scale=scale, grayscale=True)
             gray = bitmap.to_pil().convert("L")
+            bitmap.close()
             # Threshold to bilevel (no dithering) — crisp text and best G4 compression.
             bw = gray.convert("1", dither=Image.NONE)
             buf = io.BytesIO()
             # Embed the DPI so img2pdf sizes each page to its true physical size.
-            bw.save(buf, format="PNG", dpi=(dpi, dpi))
+            bw.save(buf, format="PNG", dpi=(effective_dpi, effective_dpi))
             images.append(buf.getvalue())
             page.close()
     finally:

@@ -2,7 +2,9 @@ import io
 
 import pikepdf
 import pypdfium2 as pdfium
+import pytest
 
+from pdfflatten import render
 from pdfflatten.decrypt import decrypt_to_bytes
 from pdfflatten.flatten import flatten_pdf_bytes
 
@@ -50,3 +52,31 @@ def test_max_bytes_triggers_downscale(base_pdf):
     out = flatten_pdf_bytes(base_pdf.read_bytes(), max_bytes=1)
     assert out[:5] == b"%PDF-"
     assert _page_count(out) == 1
+
+
+def _embedded_image_pixels(pdf_bytes):
+    """Width * height of the (single) raster image on page 1."""
+    pdf = pikepdf.open(io.BytesIO(pdf_bytes))
+    image = next(iter(pdf.pages[0].images.values()))
+    return int(image.Width) * int(image.Height)
+
+
+def test_render_pixels_are_capped(base_pdf, monkeypatch):
+    # A hostile PDF can declare an enormous page; the renderer must never
+    # allocate more than the pixel budget no matter what the page claims.
+    monkeypatch.setattr(render, "MAX_RENDER_PIXELS", 100_000)
+    out = flatten_pdf_bytes(base_pdf.read_bytes())
+    # Small slack for pdfium rounding partial pixels up at the edges.
+    assert _embedded_image_pixels(out) <= 105_000
+
+
+def test_clamped_page_keeps_physical_size(base_pdf, monkeypatch):
+    # Clamping lowers the effective DPI; the page must still print letter-size.
+    monkeypatch.setattr(render, "MAX_RENDER_PIXELS", 100_000)
+    out = flatten_pdf_bytes(base_pdf.read_bytes())
+    pdf = pikepdf.open(io.BytesIO(out))
+    box = pdf.pages[0].mediabox
+    width = float(box[2]) - float(box[0])
+    height = float(box[3]) - float(box[1])
+    assert width == pytest.approx(612, rel=0.03)
+    assert height == pytest.approx(792, rel=0.03)

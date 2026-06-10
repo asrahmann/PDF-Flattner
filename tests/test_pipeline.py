@@ -1,5 +1,11 @@
+import sys
+
 import pikepdf
 import pytest
+
+needs_symlinks = pytest.mark.skipif(
+    sys.platform == "win32", reason="symlink creation needs privileges on Windows"
+)
 
 from pdfflatten.decrypt import PasswordRequired
 from pdfflatten.pipeline import (
@@ -77,3 +83,34 @@ def test_process_to_jpgs_decrypts_owner_restricted(owner_encrypted_pdf, tmp_path
 def test_process_to_jpgs_propagates_password_required(user_encrypted_pdf, tmp_path):
     with pytest.raises(PasswordRequired):
         process_pdf_to_jpgs(user_encrypted_pdf, output_dir=tmp_path)
+
+
+def test_process_pdf_collision_writes_incremented_name(base_pdf, tmp_path):
+    (tmp_path / "flattened-base.pdf").write_text("x")
+    out = process_pdf(base_pdf, output_dir=tmp_path)
+    assert out.name == "flattened-base-2.pdf"
+    assert (tmp_path / "flattened-base.pdf").read_text() == "x"
+
+
+@needs_symlinks
+def test_process_pdf_does_not_write_through_dangling_symlink(base_pdf, tmp_path):
+    # A dangling symlink at the predictable output name must not redirect the
+    # write to its target — the name should be skipped like any collision.
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    victim = tmp_path / "victim.pdf"
+    (outdir / "flattened-base.pdf").symlink_to(victim)
+    out = process_pdf(base_pdf, output_dir=outdir)
+    assert not victim.exists()
+    assert out.name == "flattened-base-2.pdf"
+
+
+@needs_symlinks
+def test_process_to_jpgs_skips_dangling_symlink_folder_name(base_pdf, tmp_path):
+    outdir = tmp_path / "out"
+    outdir.mkdir()
+    victim = tmp_path / "victim-folder"
+    (outdir / "base").symlink_to(victim)
+    folder = process_pdf_to_jpgs(base_pdf, output_dir=outdir)
+    assert not victim.exists()
+    assert folder.name == "base-2"
