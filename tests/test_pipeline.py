@@ -2,7 +2,12 @@ import pikepdf
 import pytest
 
 from pdfflatten.decrypt import PasswordRequired
-from pdfflatten.pipeline import output_path_for, process_pdf
+from pdfflatten.pipeline import (
+    output_folder_for,
+    output_path_for,
+    process_pdf,
+    process_pdf_to_jpgs,
+)
 
 
 def test_output_path_basic(tmp_path):
@@ -41,3 +46,34 @@ def test_process_decrypts_with_password(user_encrypted_pdf, tmp_path):
     out = process_pdf(user_encrypted_pdf, output_dir=tmp_path, password="secret")
     assert out.exists()
     assert not pikepdf.open(out).is_encrypted
+
+
+def test_output_folder_basic(tmp_path):
+    out = output_folder_for(tmp_path / "invoice.pdf", tmp_path)
+    assert out == tmp_path / "invoice"
+
+
+def test_output_folder_collision_increments(tmp_path):
+    (tmp_path / "invoice").mkdir()
+    out = output_folder_for(tmp_path / "invoice.pdf", tmp_path)
+    assert out == tmp_path / "invoice-2"
+
+
+def test_process_to_jpgs_creates_folder_with_page_images(base_pdf, tmp_path):
+    folder = process_pdf_to_jpgs(base_pdf, output_dir=tmp_path)
+    assert folder.is_dir()
+    assert folder.name == "base"
+    jpgs = sorted(folder.glob("*.jpg"))
+    assert len(jpgs) == 1
+    assert jpgs[0].name == "base-page-1.jpg"
+
+
+def test_process_to_jpgs_decrypts_owner_restricted(owner_encrypted_pdf, tmp_path):
+    folder = process_pdf_to_jpgs(owner_encrypted_pdf, output_dir=tmp_path)
+    assert folder.is_dir()
+    assert len(list(folder.glob("*.jpg"))) == 1
+
+
+def test_process_to_jpgs_propagates_password_required(user_encrypted_pdf, tmp_path):
+    with pytest.raises(PasswordRequired):
+        process_pdf_to_jpgs(user_encrypted_pdf, output_dir=tmp_path)

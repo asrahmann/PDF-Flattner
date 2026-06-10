@@ -29,9 +29,17 @@ installer, no admin rights needed. Just double-click it.
 ## Use
 
 1. Double-click the app.
-2. Drag a PDF onto the window (or click **Choose file(s)…**).
+2. Drag a PDF onto the window (or click **Flatten to PDF…**).
 3. If the PDF needs a password to open, enter it when asked.
 4. Find `flattened-<name>.pdf` on your **Desktop**, ready to fax.
+
+### Fallback: convert to JPG images
+
+If a flattened PDF still won't send, click **Convert to JPG…** instead. The app
+decrypts the file and saves **one JPG per page** into a folder named after the
+file on your Desktop (e.g. `invoice/invoice-page-1.jpg`, `…-page-2.jpg`). Each
+image is kept under the fax size limit (resolution/quality step down
+automatically if needed).
 
 ## Run from source
 

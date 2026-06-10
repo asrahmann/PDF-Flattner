@@ -1,3 +1,3 @@
 """PDF Flatten & Decrypt — local, offline PDF preparation for faxing."""
 
-__version__ = "0.1.2"
+__version__ = "0.1.3"

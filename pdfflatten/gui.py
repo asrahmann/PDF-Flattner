@@ -9,7 +9,7 @@ from tkinterdnd2 import DND_FILES, TkinterDnD
 from . import __version__
 from .decrypt import PasswordRequired
 from .desktop import desktop_dir
-from .pipeline import process_pdf
+from .pipeline import process_pdf, process_pdf_to_jpgs
 
 DEVELOPER = "Ahmedur Rahman"
 DEVELOPER_EMAIL = "Ahmedur.Rahman@cloudcodelabs.com"
@@ -31,12 +31,13 @@ class App:
 
         buttons = tk.Frame(self.root)
         buttons.pack(pady=5)
-        tk.Button(buttons, text="Choose file(s)…", command=self._choose).pack(side="left", padx=4)
+        tk.Button(buttons, text="Flatten to PDF…", command=self._choose_pdf).pack(side="left", padx=4)
+        tk.Button(buttons, text="Convert to JPG…", command=self._choose_jpg).pack(side="left", padx=4)
         tk.Button(buttons, text="About", command=self._about).pack(side="left", padx=4)
 
         self.status = tk.Label(
             self.root,
-            text="Saved files go to your Desktop.",
+            text="Drop = flatten to PDF. Use “Convert to JPG…” if a PDF won’t send.\nEverything saves to your Desktop.",
             fg="#444",
             wraplength=420,
             justify="center",
@@ -46,44 +47,54 @@ class App:
         self.root.drop_target_register(DND_FILES)
         self.root.dnd_bind("<<Drop>>", self._on_drop)
 
-    def _choose(self) -> None:
-        paths = filedialog.askopenfilenames(
-            title="Choose PDF(s)", filetypes=[("PDF files", "*.pdf")]
+    def _choose_pdf(self) -> None:
+        self._handle(self._ask_files(), mode="pdf")
+
+    def _choose_jpg(self) -> None:
+        self._handle(self._ask_files(), mode="jpg")
+
+    def _ask_files(self):
+        return list(
+            filedialog.askopenfilenames(
+                title="Choose PDF(s)", filetypes=[("PDF files", "*.pdf")]
+            )
         )
-        self._handle(list(paths))
 
     def _on_drop(self, event) -> None:
         # tkinterdnd2 returns a brace/space-delimited list; splitlist handles it.
-        self._handle(list(self.root.tk.splitlist(event.data)))
+        # A drag-drop always means the primary action: flatten to PDF.
+        self._handle(list(self.root.tk.splitlist(event.data)), mode="pdf")
 
-    def _handle(self, paths) -> None:
+    def _handle(self, paths, mode: str) -> None:
         pdfs = [p for p in paths if str(p).lower().endswith(".pdf")]
         if not pdfs:
-            self._set("Please drop PDF files (.pdf).", "#b00")
+            self._set("Please choose PDF files (.pdf).", "#b00")
             return
         done, failed = [], []
         for p in pdfs:
             try:
-                out = self._process_one(Path(p))
+                out = self._process_one(Path(p), mode)
                 if out is None:
                     failed.append(f"{Path(p).name} (skipped)")
                 else:
                     done.append(out.name)
             except Exception as exc:  # noqa: BLE001 - surface any error to the user
                 failed.append(f"{Path(p).name}: {exc}")
+        label = "JPG folder(s) on Desktop" if mode == "jpg" else "PDF(s) on Desktop"
         msg = ""
         if done:
-            msg += "✓ Saved to Desktop:\n" + "\n".join(done)
+            msg += f"✓ Saved {label}:\n" + "\n".join(done)
         if failed:
             msg += ("\n\n" if done else "") + "✗ Problems:\n" + "\n".join(failed)
         self._set(msg, "#070" if not failed else "#b00")
 
-    def _process_one(self, path: Path):
+    def _process_one(self, path: Path, mode: str):
         """Process one file, prompting for a password up to 3 times if needed."""
+        processor = process_pdf_to_jpgs if mode == "jpg" else process_pdf
         password = ""
         for _ in range(3):
             try:
-                return process_pdf(path, output_dir=desktop_dir(), password=password)
+                return processor(path, output_dir=desktop_dir(), password=password)
             except PasswordRequired:
                 password = simpledialog.askstring(
                     "Password required",
