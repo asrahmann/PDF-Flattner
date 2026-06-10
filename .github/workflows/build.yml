@@ -33,6 +33,12 @@ jobs:
           path: dist/PDF-Flatten-Decrypt.exe
       - name: Publish to Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/PDF-Flatten-Decrypt.exe
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          gh release create "$TAG" --title "PDF Flatten & Decrypt $TAG" \
+            --notes "Portable Windows build — download the .exe below. No install needed (double-click to run; Windows SmartScreen: More info -> Run anyway). Output saves to your Desktop as flattened-<name>.pdf." \
+            || echo "Release $TAG already exists; updating asset."
+          gh release upload "$TAG" dist/PDF-Flatten-Decrypt.exe --clobber
