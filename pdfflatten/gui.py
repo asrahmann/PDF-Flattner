@@ -37,7 +37,7 @@ class App:
 
         self.status = tk.Label(
             self.root,
-            text="Drop = flatten to PDF. Use “Convert to JPG…” if a PDF won’t send.\nEverything saves to your Desktop.",
+            text="Drop a PDF and choose Flatten or JPG.\nEverything saves to your Desktop.",
             fg="#444",
             wraplength=420,
             justify="center",
@@ -62,8 +62,47 @@ class App:
 
     def _on_drop(self, event) -> None:
         # tkinterdnd2 returns a brace/space-delimited list; splitlist handles it.
-        # A drag-drop always means the primary action: flatten to PDF.
-        self._handle(list(self.root.tk.splitlist(event.data)), mode="pdf")
+        paths = list(self.root.tk.splitlist(event.data))
+        if not any(str(p).lower().endswith(".pdf") for p in paths):
+            self._set("Please drop PDF files (.pdf).", "#b00")
+            return
+        mode = self._ask_mode()
+        if mode is None:  # user cancelled
+            return
+        self._handle(paths, mode=mode)
+
+    def _ask_mode(self):
+        """Modal popup: return 'pdf', 'jpg', or None if cancelled."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Choose action")
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+        result = {"mode": None}
+
+        tk.Label(
+            dialog,
+            text="What should I do with the dropped file(s)?",
+            padx=20,
+            pady=14,
+        ).pack()
+
+        def pick(mode):
+            result["mode"] = mode
+            dialog.destroy()
+
+        row = tk.Frame(dialog)
+        row.pack(padx=20, pady=(0, 10))
+        tk.Button(row, text="Flatten to PDF", width=16, command=lambda: pick("pdf")).pack(side="left", padx=5)
+        tk.Button(row, text="Convert to JPG", width=16, command=lambda: pick("jpg")).pack(side="left", padx=5)
+        tk.Button(dialog, text="Cancel", command=lambda: pick(None)).pack(pady=(0, 12))
+
+        dialog.update_idletasks()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - dialog.winfo_width()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{max(x, 0)}+{max(y, 0)}")
+        dialog.grab_set()
+        self.root.wait_window(dialog)
+        return result["mode"]
 
     def _handle(self, paths, mode: str) -> None:
         pdfs = [p for p in paths if str(p).lower().endswith(".pdf")]
