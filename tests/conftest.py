@@ -16,6 +16,17 @@ def _base_pdf_bytes(text="Hello fax world"):
     return buf.getvalue()
 
 
+def _multi_page_pdf_bytes(pages=3):
+    """A PDF with ``pages`` simple text pages."""
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=letter)
+    for i in range(pages):
+        c.drawString(72, 720, f"Page {i + 1}")
+        c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
 def _form_pdf_bytes():
     """A 1-page PDF containing an interactive AcroForm text field."""
     buf = io.BytesIO()
@@ -50,6 +61,13 @@ def user_encrypted_pdf(tmp_path):
     src = pikepdf.open(io.BytesIO(_base_pdf_bytes()))
     p = tmp_path / "user.pdf"
     src.save(p, encryption=pikepdf.Encryption(owner="ownerpw", user="secret", R=4))
+    return p
+
+
+@pytest.fixture
+def multi_page_pdf(tmp_path):
+    p = tmp_path / "multi.pdf"
+    p.write_bytes(_multi_page_pdf_bytes())
     return p
 
 
