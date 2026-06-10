@@ -6,6 +6,7 @@ from .decrypt import decrypt_to_bytes
 from .desktop import desktop_dir
 from .flatten import flatten_pdf_bytes
 from .images import pdf_to_jpegs
+from .render import page_count  # noqa: F401  (re-exported for the GUI)
 
 
 def _candidate_names(base: str, suffix: str = ""):
@@ -43,6 +44,20 @@ def _write_new_file(output_dir: Path, names, data: bytes) -> Path:
         return path
 
 
+def flatten_decrypted(decrypted: bytes, source, output_dir, *, progress=None, cancel=None) -> Path:
+    """Flatten already-decrypted ``decrypted`` bytes and write the result.
+
+    Separated from decryption so the GUI can decrypt (and prompt for a password)
+    on the main thread, then run this slow part on a worker thread with
+    ``progress``/``cancel`` wired through.
+    """
+    source = Path(source)
+    flat = flatten_pdf_bytes(decrypted, progress=progress, cancel=cancel)
+    return _write_new_file(
+        Path(output_dir), _candidate_names(f"flattened-{source.stem}", ".pdf"), flat
+    )
+
+
 def process_pdf(source, output_dir=None, password: str = "") -> Path:
     """Decrypt and flatten ``source``, write the result, and return its path.
 
@@ -52,8 +67,7 @@ def process_pdf(source, output_dir=None, password: str = "") -> Path:
     source = Path(source)
     output_dir = Path(output_dir) if output_dir is not None else desktop_dir()
     decrypted = decrypt_to_bytes(source, password=password)
-    flat = flatten_pdf_bytes(decrypted)
-    return _write_new_file(output_dir, _candidate_names(f"flattened-{source.stem}", ".pdf"), flat)
+    return flatten_decrypted(decrypted, source, output_dir)
 
 
 def output_folder_for(source, output_dir) -> Path:
@@ -80,6 +94,17 @@ def _make_new_folder(output_dir: Path, names) -> Path:
         return path
 
 
+def jpgs_from_decrypted(decrypted: bytes, source, output_dir, *, progress=None, cancel=None) -> Path:
+    """Convert already-decrypted ``decrypted`` bytes to one JPG per page in a folder."""
+    source = Path(source)
+    jpgs = pdf_to_jpegs(decrypted, progress=progress, cancel=cancel)
+    folder = _make_new_folder(Path(output_dir), _candidate_names(source.stem))
+    pad = len(str(len(jpgs)))
+    for index, data in enumerate(jpgs, start=1):
+        (folder / f"{source.stem}-page-{index:0{pad}d}.jpg").write_bytes(data)
+    return folder
+
+
 def process_pdf_to_jpgs(source, output_dir=None, password: str = "") -> Path:
     """Decrypt ``source`` and save one JPG per page into a Desktop folder.
 
@@ -90,9 +115,4 @@ def process_pdf_to_jpgs(source, output_dir=None, password: str = "") -> Path:
     source = Path(source)
     output_dir = Path(output_dir) if output_dir is not None else desktop_dir()
     decrypted = decrypt_to_bytes(source, password=password)
-    jpgs = pdf_to_jpegs(decrypted)
-    folder = _make_new_folder(output_dir, _candidate_names(source.stem))
-    pad = len(str(len(jpgs)))
-    for index, data in enumerate(jpgs, start=1):
-        (folder / f"{source.stem}-page-{index:0{pad}d}.jpg").write_bytes(data)
-    return folder
+    return jpgs_from_decrypted(decrypted, source, output_dir)

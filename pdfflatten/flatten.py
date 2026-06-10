@@ -14,7 +14,7 @@ import pikepdf
 import pypdfium2 as pdfium
 from PIL import Image
 
-from .render import clamped_scale
+from .render import Cancelled, clamped_scale
 
 FAX_DPI = 200
 # Common fax APIs cap uploads around 30 MB; stay comfortably under that.
@@ -23,12 +23,21 @@ DEFAULT_MAX_BYTES = 25 * 1024 * 1024
 _DPI_LADDER = (200, 150, 120, 100)
 
 
-def _render_pages(pdf_bytes: bytes, dpi: int) -> list[bytes]:
-    """Render every page to a 1-bit PNG at ``dpi``, returning the PNG bytes."""
+def _render_pages(
+    pdf_bytes: bytes, dpi: int, *, progress=None, cancel=None, phase: str = "Flattening"
+) -> list[bytes]:
+    """Render every page to a 1-bit PNG at ``dpi``, returning the PNG bytes.
+
+    Calls ``progress(current, total, phase)`` after each page and raises
+    :class:`~pdfflatten.render.Cancelled` if ``cancel`` is set at a page boundary.
+    """
     doc = pdfium.PdfDocument(pdf_bytes)
     images: list[bytes] = []
     try:
-        for page in doc:
+        total = len(doc)
+        for index, page in enumerate(doc, start=1):
+            if cancel is not None and cancel.is_set():
+                raise Cancelled()
             # Cap the render to the pixel budget so a hostile page size can't
             # force a huge allocation; the effective DPI drops instead.
             scale = clamped_scale(*page.get_size(), dpi)
@@ -43,6 +52,8 @@ def _render_pages(pdf_bytes: bytes, dpi: int) -> list[bytes]:
             bw.save(buf, format="PNG", dpi=(effective_dpi, effective_dpi))
             images.append(buf.getvalue())
             page.close()
+            if progress is not None:
+                progress(index, total, phase)
     finally:
         doc.close()
     return images
@@ -59,18 +70,32 @@ def _assemble(images: list[bytes]) -> bytes:
 
 
 def flatten_pdf_bytes(
-    pdf_bytes: bytes, dpi: int = FAX_DPI, max_bytes: int | None = DEFAULT_MAX_BYTES
+    pdf_bytes: bytes,
+    dpi: int = FAX_DPI,
+    max_bytes: int | None = DEFAULT_MAX_BYTES,
+    *,
+    progress=None,
+    cancel=None,
 ) -> bytes:
     """Rasterize ``pdf_bytes`` to a flat, fax-ready, bitonal PDF.
 
     The result has no forms, annotations, transparency, or interactivity. Output
     is rendered at ``dpi``; if ``max_bytes`` is set and the file exceeds it, the
     resolution is reduced step by step until it fits (or the lowest is reached).
+
+    ``progress(current, total, phase)`` is called once per page; the first pass
+    reports phase ``"Flattening"`` and any size-reduction re-render reports
+    ``"Reducing size"``. ``cancel`` is a ``threading.Event`` checked at each page
+    boundary; if set, :class:`~pdfflatten.render.Cancelled` is raised and nothing
+    is returned.
     """
     candidate_dpis = (dpi, *(d for d in _DPI_LADDER if d < dpi))
     result = b""
-    for candidate_dpi in candidate_dpis:
-        result = _assemble(_render_pages(pdf_bytes, candidate_dpi))
+    for pass_index, candidate_dpi in enumerate(candidate_dpis):
+        phase = "Flattening" if pass_index == 0 else "Reducing size"
+        result = _assemble(
+            _render_pages(pdf_bytes, candidate_dpi, progress=progress, cancel=cancel, phase=phase)
+        )
         if max_bytes is None or len(result) <= max_bytes:
             return result
     return result  # smallest we could produce, even if still over the limit
