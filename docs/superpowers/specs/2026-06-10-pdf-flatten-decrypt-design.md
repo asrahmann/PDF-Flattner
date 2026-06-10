@@ -45,8 +45,10 @@ or encryption — exactly what the fax API wants.
 3. If a file needs an **open password**, the app prompts for it. If a file is
    only **owner-restricted** (no-print / no-copy / no-edit), it is handled
    silently with no prompt.
-4. The app writes a clean copy next to the original, suffixed `-flat`
-   (e.g. `invoice.pdf` → `invoice-flat.pdf`).
+4. The app writes a clean copy to the **Desktop**, with `flattened-` prepended
+   to the filename (e.g. `invoice.pdf` → `flattened-invoice.pdf` on the Desktop).
+   If a file of that name already exists, a numeric suffix is added
+   (`flattened-invoice-2.pdf`) so nothing is overwritten.
 5. A clear "✓ Done — saved to <path>" (or a plain error message) is shown.
 
 One window. No menus, no settings, no configuration.
@@ -67,7 +69,10 @@ For each input PDF:
      size/orientation.
 3. **Output**
    - Save a linearized ("fast web view") PDF — a format fax APIs accept
-     reliably — next to the source as `<name>-flat.pdf`.
+     reliably — to the user's **Desktop** as `flattened-<name>.pdf`.
+   - The Desktop path is resolved robustly per-OS (Windows `%USERPROFILE%\Desktop`,
+     macOS `~/Desktop`), accounting for a possible OneDrive-redirected Desktop on
+     Windows. If a same-named file exists, append `-2`, `-3`, … to avoid overwriting.
 
 ## Technology
 
@@ -99,6 +104,22 @@ portable `.exe` for the recipient to double-click.
 
 Code signing can be added later as a pure packaging step without changing any
 app code.
+
+### Downloadable build (GitHub Releases + CI)
+
+The portable `.exe` must be **downloadable** so it can be handed to the recipient
+via a link rather than copied by hand.
+
+- A **GitHub Actions** workflow builds the Windows `.exe` (and optionally a macOS
+  build) with PyInstaller and attaches the artifact to a **GitHub Release** on
+  each tagged version. The recipient downloads it from the Releases page.
+- **Tradeoff to note:** a file *downloaded from the internet* gets the Windows
+  SmartScreen "unknown publisher" warning and the macOS quarantine flag, so the
+  recipient will see a one-time "More info → Run anyway" (Windows) or
+  right-click → Open (macOS) prompt. (Copying the file directly to the machine
+  avoids this, but a download link is more convenient.) This reinforces the value
+  of the de-risk test build before relying on the download path.
+- Repository: <https://github.com/asrahmann/PDF-Flattner>
 
 ## Testing
 
