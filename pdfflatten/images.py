@@ -10,7 +10,7 @@ import io
 import pypdfium2 as pdfium
 from PIL import Image
 
-from .render import clamped_scale
+from .render import Cancelled, clamped_scale
 
 JPG_DPI = 200
 # Keep each image comfortably under common 30 MB fax limits.
@@ -44,15 +44,30 @@ def _page_to_jpg(page, dpi: int, max_bytes: int | None) -> bytes:
 
 
 def pdf_to_jpegs(
-    pdf_bytes: bytes, dpi: int = JPG_DPI, max_bytes: int | None = DEFAULT_MAX_BYTES
+    pdf_bytes: bytes,
+    dpi: int = JPG_DPI,
+    max_bytes: int | None = DEFAULT_MAX_BYTES,
+    *,
+    progress=None,
+    cancel=None,
 ) -> list[bytes]:
-    """Return a list of JPEG byte strings, one per page of ``pdf_bytes``."""
+    """Return a list of JPEG byte strings, one per page of ``pdf_bytes``.
+
+    ``progress(current, total, "Converting to JPG")`` is called once per page.
+    ``cancel`` is a ``threading.Event`` checked at each page boundary; if set,
+    :class:`~pdfflatten.render.Cancelled` is raised.
+    """
     doc = pdfium.PdfDocument(pdf_bytes)
     images: list[bytes] = []
     try:
-        for page in doc:
+        total = len(doc)
+        for index, page in enumerate(doc, start=1):
+            if cancel is not None and cancel.is_set():
+                raise Cancelled()
             images.append(_page_to_jpg(page, dpi, max_bytes))
             page.close()
+            if progress is not None:
+                progress(index, total, "Converting to JPG")
     finally:
         doc.close()
     return images
