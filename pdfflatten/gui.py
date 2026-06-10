@@ -19,6 +19,7 @@ from .decrypt import PasswordRequired, decrypt_to_bytes
 from .desktop import desktop_dir
 from .pipeline import flatten_decrypted, jpgs_from_decrypted
 from .render import Cancelled, page_count
+from .messages import format_summary, split_by_extension, unsupported_message
 
 DEVELOPER = "Ahmedur Rahman"
 DEVELOPER_EMAIL = "Ahmedur.Rahman@cloudcodelabs.com"
@@ -117,12 +118,17 @@ class App:
     def _on_drop(self, event) -> None:
         # tkinterdnd2 returns a brace/space-delimited list; splitlist handles it.
         paths = list(self.root.tk.splitlist(event.data))
-        if not any(str(p).lower().endswith(".pdf") for p in paths):
-            self._set("Please drop PDF files (.pdf).", "#b00")
+        pdfs, non_pdfs = split_by_extension(paths)
+        if not pdfs:
+            self._set(
+                unsupported_message(non_pdfs) if non_pdfs else "Please drop PDF files (.pdf).",
+                "#b00",
+            )
             return
         mode = self._ask_mode()
         if mode is None:  # user cancelled
             return
+        # Pass the full list (not just pdfs): _handle re-splits to populate _skipped.
         self._handle(paths, mode=mode)
 
     def _ask_mode(self):
@@ -159,15 +165,19 @@ class App:
         return result["mode"]
 
     def _handle(self, paths, mode: str) -> None:
-        pdfs = [p for p in paths if str(p).lower().endswith(".pdf")]
+        pdfs, non_pdfs = split_by_extension(paths)
         if not pdfs:
-            self._set("Please choose PDF files (.pdf).", "#b00")
+            self._set(
+                unsupported_message(non_pdfs) if non_pdfs else "Please choose PDF files (.pdf).",
+                "#b00",
+            )
             return
         # Batch run state. Driven by after()-callbacks so the UI never blocks.
         self._mode = mode
         self._pdfs = pdfs
         self._index = 0
         self._done: list[str] = []
+        self._skipped: list[str] = [Path(p).name for p in non_pdfs]
         self._failed: list[str] = []
         self._cancelled = False
         self._cancel = threading.Event()
@@ -188,8 +198,7 @@ class App:
         self._progress.start_file(path.name, self._index + 1, len(self._pdfs))
 
         decrypted = self._decrypt_with_password(path)
-        if decrypted is None:  # cancelled at the password prompt, or wrong password
-            self._failed.append(f"{path.name} (skipped)")
+        if decrypted is None:  # failure reason already recorded by the helper
             self._index += 1
             self._next_file()
             return
@@ -199,7 +208,7 @@ class App:
         except Exception:  # noqa: BLE001 - a bad count must not block processing
             pages = 0
         if pages >= FAX_PLAN_PAGE_WARNING and not self._confirm_large(path, pages):
-            self._failed.append(f"{path.name} (skipped)")
+            self._failed.append(f"{path.name} — skipped (chose not to continue)")
             self._index += 1
             self._next_file()
             return
@@ -211,7 +220,11 @@ class App:
         self.root.after(100, self._poll)
 
     def _decrypt_with_password(self, path: Path):
-        """Decrypt on the main thread, prompting up to 3 times. None if it can't."""
+        """Decrypt on the main thread, prompting up to 3 times.
+
+        Returns the decrypted bytes, or None after recording a single plain
+        reason in ``self._failed`` (unreadable PDF, no password, or wrong one).
+        """
         password = ""
         for _ in range(3):
             try:
@@ -223,12 +236,14 @@ class App:
                     show="*",
                     parent=self.root,
                 )
-                if password is None:  # user cancelled
+                if password is None:  # user cancelled the prompt
+                    self._failed.append(f"{path.name} — password required (not provided)")
                     return None
-            except Exception as exc:  # noqa: BLE001 - surface any open error to the user
-                self._failed.append(f"{path.name}: {exc}")
+            except Exception:  # noqa: BLE001 - any open failure means we can't read it
+                self._failed.append(f"{path.name} — could not read this PDF (it may be damaged)")
                 return None
-        return None  # ran out of attempts
+        self._failed.append(f"{path.name} — incorrect password")
+        return None
 
     def _confirm_large(self, path: Path, pages: int) -> bool:
         return messagebox.askokcancel(
@@ -285,19 +300,11 @@ class App:
 
     def _finish_batch(self) -> None:
         self._progress.close()
-        if self._cancelled:
-            remaining = len(self._pdfs) - self._index
-            if remaining > 0:
-                self._failed.append(f"{remaining} file(s) cancelled")
-        label = "JPG folder(s) on Desktop" if self._mode == "jpg" else "PDF(s) on Desktop"
-        msg = ""
-        if self._done:
-            msg += f"✓ Saved {label}:\n" + "\n".join(self._done)
-        if self._failed:
-            msg += ("\n\n" if self._done else "") + "✗ Problems:\n" + "\n".join(self._failed)
-        if not msg:
-            msg = "Nothing to do."
-        self._set(msg, "#070" if not self._failed else "#b00")
+        cancelled = len(self._pdfs) - self._index if self._cancelled else 0
+        message, colour = format_summary(
+            self._done, self._skipped, self._failed, cancelled, self._mode
+        )
+        self._set(message, colour)
 
     def _about(self) -> None:
         messagebox.showinfo(
