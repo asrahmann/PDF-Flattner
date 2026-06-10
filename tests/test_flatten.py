@@ -37,3 +37,16 @@ def test_output_not_encrypted(owner_encrypted_pdf):
     out = flatten_pdf_bytes(decrypted)
     pdf = pikepdf.open(io.BytesIO(out))
     assert not pdf.is_encrypted
+
+
+def test_output_is_compact(base_pdf):
+    # A bitonal/CCITT-G4 text page must be small (was multi-hundred-KB as JPEG).
+    out = flatten_pdf_bytes(base_pdf.read_bytes())
+    assert len(out) < 200_000
+
+
+def test_max_bytes_triggers_downscale(base_pdf):
+    # An impossibly small cap forces the DPI ladder to the bottom; still valid PDF.
+    out = flatten_pdf_bytes(base_pdf.read_bytes(), max_bytes=1)
+    assert out[:5] == b"%PDF-"
+    assert _page_count(out) == 1
