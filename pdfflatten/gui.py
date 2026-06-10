@@ -39,8 +39,8 @@ class ProgressDialog:
         # Closing the window or Cancel both request cancellation.
         self.top.protocol("WM_DELETE_WINDOW", on_cancel)
 
-        self._file = tk.Label(self.top, text="Preparing…", padx=24, pady=(16, 4))
-        self._file.pack()
+        self._file = tk.Label(self.top, text="Preparing…", padx=24)
+        self._file.pack(pady=(16, 4))
         self._phase = tk.Label(self.top, text="", fg="#444", padx=24)
         self._phase.pack()
         self._bar = ttk.Progressbar(self.top, length=340, mode="determinate")
