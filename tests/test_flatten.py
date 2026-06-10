@@ -1,4 +1,5 @@
 import io
+import threading
 
 import pikepdf
 import pypdfium2 as pdfium
@@ -7,6 +8,7 @@ import pytest
 from pdfflatten import render
 from pdfflatten.decrypt import decrypt_to_bytes
 from pdfflatten.flatten import flatten_pdf_bytes
+from pdfflatten.render import Cancelled
 
 
 def _page_count(data):
@@ -80,3 +82,31 @@ def test_clamped_page_keeps_physical_size(base_pdf, monkeypatch):
     height = float(box[3]) - float(box[1])
     assert width == pytest.approx(612, rel=0.03)
     assert height == pytest.approx(792, rel=0.03)
+
+
+def test_progress_called_once_per_page(multi_page_pdf):
+    calls = []
+    flatten_pdf_bytes(
+        multi_page_pdf.read_bytes(),
+        progress=lambda cur, total, phase: calls.append((cur, total, phase)),
+    )
+    # Default cap is generous: a single pass over 3 pages.
+    assert calls == [(1, 3, "Flattening"), (2, 3, "Flattening"), (3, 3, "Flattening")]
+
+
+def test_progress_reports_reducing_size_pass(multi_page_pdf):
+    phases = set()
+    flatten_pdf_bytes(
+        multi_page_pdf.read_bytes(),
+        max_bytes=1,  # impossibly small: forces the DPI ladder to re-render
+        progress=lambda cur, total, phase: phases.add(phase),
+    )
+    assert "Flattening" in phases
+    assert "Reducing size" in phases
+
+
+def test_cancel_raises_before_finishing(multi_page_pdf):
+    cancel = threading.Event()
+    cancel.set()  # already cancelled: must stop at the first page
+    with pytest.raises(Cancelled):
+        flatten_pdf_bytes(multi_page_pdf.read_bytes(), cancel=cancel)
