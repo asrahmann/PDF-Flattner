@@ -60,3 +60,7 @@ The result is in `dist/`. `--collect-all` bundles the `tkinterdnd2` and
 
 There is **no network code anywhere** in this app. It cannot phone home, upload,
 or transmit anything. All processing happens on your machine.
+
+## Credits
+
+Developed by **Ahmedur Rahman** — Ahmedur.Rahman@cloudcodelabs.com

@@ -2,13 +2,17 @@
 
 import tkinter as tk
 from pathlib import Path
-from tkinter import filedialog, simpledialog
+from tkinter import filedialog, messagebox, simpledialog
 
 from tkinterdnd2 import DND_FILES, TkinterDnD
 
+from . import __version__
 from .decrypt import PasswordRequired
 from .desktop import desktop_dir
 from .pipeline import process_pdf
+
+DEVELOPER = "Ahmedur Rahman"
+DEVELOPER_EMAIL = "Ahmedur.Rahman@cloudcodelabs.com"
 
 
 class App:
@@ -25,7 +29,10 @@ class App:
             justify="center",
         ).pack(expand=True, fill="both", padx=20, pady=(20, 5))
 
-        tk.Button(self.root, text="Choose file(s)…", command=self._choose).pack(pady=5)
+        buttons = tk.Frame(self.root)
+        buttons.pack(pady=5)
+        tk.Button(buttons, text="Choose file(s)…", command=self._choose).pack(side="left", padx=4)
+        tk.Button(buttons, text="About", command=self._about).pack(side="left", padx=4)
 
         self.status = tk.Label(
             self.root,
@@ -87,6 +94,18 @@ class App:
                 if password is None:  # user cancelled
                     return None
         raise PasswordRequired("incorrect password")
+
+    def _about(self) -> None:
+        messagebox.showinfo(
+            "About PDF Flatten & Decrypt",
+            "PDF Flatten & Decrypt\n"
+            f"Version {__version__}\n\n"
+            "A secure, offline tool to decrypt and flatten PDF files.\n"
+            "All processing happens on your computer — nothing is uploaded.\n\n"
+            f"Developed by {DEVELOPER}\n"
+            f"{DEVELOPER_EMAIL}",
+            parent=self.root,
+        )
 
     def _set(self, text: str, color: str = "#444") -> None:
         self.status.config(text=text, fg=color)
