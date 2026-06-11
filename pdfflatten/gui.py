@@ -19,7 +19,7 @@ from .decrypt import PasswordRequired, decrypt_to_bytes
 from .desktop import desktop_dir
 from .pipeline import flatten_decrypted, jpgs_from_decrypted
 from .render import Cancelled, page_count
-from .messages import format_summary, split_by_extension, unsupported_message
+from .messages import DISCLAIMER_TEXT, format_summary, split_by_extension, unsupported_message
 
 DEVELOPER = "Ahmedur Rahman"
 DEVELOPER_EMAIL = "Ahmedur.Rahman@cloudcodelabs.com"
@@ -323,6 +323,11 @@ class App:
         self.root.update_idletasks()
 
     def run(self) -> None:
+        self.root.withdraw()  # keep the main window hidden until the disclaimer is accepted
+        if not messagebox.askokcancel("Disclaimer", DISCLAIMER_TEXT, parent=self.root):
+            self.root.destroy()  # Cancel: close without ever showing the app
+            return
+        self.root.deiconify()
         self.root.mainloop()
 
 
