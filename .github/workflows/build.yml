@@ -44,10 +44,21 @@ jobs:
           TAG: ${{ github.ref_name }}
         shell: bash
         run: |
+          # Publish the exe's SHA-256 so a recipient (or their IT) can verify
+          # the download matches this build before whitelisting/running it.
+          SHA256=$(sha256sum dist/PDF-Flatten-Decrypt.exe | cut -d' ' -f1)
+          {
+            echo 'Portable Windows build — download the .exe below. No install needed (double-click to run; Windows SmartScreen: More info -> Run anyway). Output saves to your Desktop as flattened-<name>.pdf.'
+            echo ''
+            echo 'SHA-256 of PDF-Flatten-Decrypt.exe:'
+            echo ''
+            echo "    $SHA256"
+            echo ''
+            echo 'To verify a download, run in PowerShell: Get-FileHash PDF-Flatten-Decrypt.exe — the hash must match the value above.'
+          } > release-notes.md
           # GitHub's auth API has been returning intermittent 401s; retry a few times.
-          gh release create "$TAG" --title "PDF Flatten & Decrypt $TAG" \
-            --notes "Portable Windows build — download the .exe below. No install needed (double-click to run; Windows SmartScreen: More info -> Run anyway). Output saves to your Desktop as flattened-<name>.pdf." \
-            || echo "Release $TAG already exists; updating asset."
+          gh release create "$TAG" --title "PDF Flatten & Decrypt $TAG" --notes-file release-notes.md \
+            || { echo "Release $TAG already exists; refreshing notes."; gh release edit "$TAG" --notes-file release-notes.md; }
           for attempt in 1 2 3 4 5; do
             if gh release upload "$TAG" dist/PDF-Flatten-Decrypt.exe --clobber; then
               echo "Asset uploaded on attempt $attempt."
