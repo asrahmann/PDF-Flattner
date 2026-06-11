@@ -58,3 +58,18 @@ def format_summary(done, skipped, failed, cancelled: int, mode: str) -> tuple[st
     else:
         colour = GREEN
     return "\n\n".join(sections), colour
+
+
+# Shown (every launch) before the main window; the user must accept to continue.
+DISCLAIMER_TEXT = (
+    'PDF Flatten & Decrypt\n\n'
+    'This software is provided "as is", without warranty of any kind, express '
+    "or implied, including but not limited to the warranties of "
+    "merchantability, fitness for a particular purpose, and non-infringement.\n\n"
+    "By clicking OK and using this application, you acknowledge that you use it "
+    "entirely at your own risk, and that the developer (Ahmedur Rahman) shall "
+    "not be liable for any claim, loss, or damage of any kind — including data "
+    "loss or errors in processed files — arising from or in connection with the "
+    "software or its use.\n\n"
+    "Click OK to accept and continue, or Cancel to exit."
+)

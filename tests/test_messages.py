@@ -59,3 +59,15 @@ def test_format_summary_empty_is_nothing_to_do():
     msg, colour = format_summary([], [], [], 0, "pdf")
     assert msg == "Nothing to do."
     assert colour == "#444"
+
+
+def test_disclaimer_text_has_key_clauses():
+    from pdfflatten.messages import DISCLAIMER_TEXT
+
+    text = DISCLAIMER_TEXT.lower()
+    assert "as is" in text
+    assert "at your own risk" in text
+    assert "not be liable" in text
+    assert "ahmedur rahman" in text
+    assert "ok to accept" in text
+    assert "cancel to exit" in text
